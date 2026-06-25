@@ -1,54 +1,42 @@
-name: bg-secret-race-test
+name: bg-secret-race-v2
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/bg-step-security-test.yml'
 
 jobs:
   secret-race:
     runs-on: ubuntu-latest
+    env:
+      JOB_SECRET: job-level-secret-canary
     steps:
       - name: bg-env-reader
         id: reader
         background: true
         run: |
-          echo "BG_START: pid=$$"
-          echo "BG: GITHUB_ENV=$GITHUB_ENV"
-          echo "BG: initial GITHUB_TOKEN len=${#GITHUB_TOKEN}"
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if [ -f "$GITHUB_ENV" ]; then
-              ENVCONTENTS=$(cat "$GITHUB_ENV" 2>/dev/null)
-              echo "BG_TICK_$i: GITHUB_ENV contents=[$ENVCONTENTS]"
-            fi
-            echo "BG_TICK_$i: SECRET_VAR=$SECRET_VAR LATE_VALUE=$LATE_VALUE"
+          echo "BG_START pid=$$"
+          echo "BG GITHUB_ENV=$GITHUB_ENV"
+          echo "BG JOB_SECRET=$JOB_SECRET"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            ENVDATA=$(cat "$GITHUB_ENV" 2>/dev/null || echo "UNREADABLE")
+            echo "BG_TICK_$i ENVDATA=$ENVDATA LATE=$LATE_VALUE"
             sleep 2
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SECRET_VAR: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: write-late-secret
+      - name: write-late
         run: |
-          echo "FG1: Writing LATE_VALUE to GITHUB_ENV"
-          echo "LATE_VALUE=LATE-SECRET-CANARY-12345" >> "$GITHUB_ENV"
+          echo "FG1 writing LATE_VALUE"
+          echo "LATE_VALUE=CANARY-LATE-99" >> "$GITHUB_ENV"
           sleep 3
 
-      - name: read-late-secret
+      - name: read-late
         run: |
-          echo "FG2: LATE_VALUE=$LATE_VALUE"
-          sleep 5
+          echo "FG2 LATE_VALUE=$LATE_VALUE"
+          sleep 8
 
-      - name: write-second-secret
-        run: |
-          echo "FG3: Writing SECOND_SECRET"
-          echo "SECOND_SECRET=SECOND-CANARY-67890" >> "$GITHUB_ENV"
-          sleep 5
-
-      - name: check-bg-output
-        run: echo "FG4: checking if bg read late secrets"
-
-      - name: cancel-reader
+      - name: stop
         cancel: reader
 
-      - name: verify-cancel
-        run: |
-          echo "FG5: bg cancelled, checking if process still exists"
-          ps aux | grep -v grep | grep "sleep" || echo "no lingering sleep processes"
+      - name: done
+        run: echo "FG3 done"
