@@ -1,0 +1,102 @@
+name: token-perm-test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/token-perm-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test-token-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: token-info
+        run: |
+          echo "=== TOKEN INFO ==="
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq '{permissions}'
+          
+          echo "=== RATE LIMIT ==="
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/rate_limit" | jq '.resources.core.limit'
+
+      - name: try-create-issue
+        continue-on-error: true
+        run: |
+          echo "=== TRY CREATE ISSUE (should fail - no issues:write) ==="
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues" \
+            -d '{"title":"perm-test-issue","body":"should not be created"}')
+          HTTP=$(echo "$RESULT" | tail -1)
+          echo "create-issue: HTTP $HTTP"
+      
+      - name: try-create-release
+        continue-on-error: true
+        run: |
+          echo "=== TRY CREATE RELEASE (should fail - no contents:write) ==="
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases" \
+            -d '{"tag_name":"perm-test-v0.0.1","name":"perm test"}')
+          HTTP=$(echo "$RESULT" | tail -1)
+          echo "create-release: HTTP $HTTP"
+
+      - name: try-create-deployment
+        continue-on-error: true
+        run: |
+          echo "=== TRY CREATE DEPLOYMENT (should fail - no deployments:write) ==="
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/deployments" \
+            -d '{"ref":"main","environment":"perm-test"}')
+          HTTP=$(echo "$RESULT" | tail -1)
+          echo "create-deployment: HTTP $HTTP"
+
+      - name: try-graphql-mutation
+        continue-on-error: true
+        run: |
+          echo "=== TRY GRAPHQL addStar (should fail) ==="
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/graphql" \
+            -d '{"query":"mutation { addStar(input:{starrableId:\"R_kgDOTFaglQ\"}) { starrable { id } } }"}')
+          HTTP=$(echo "$RESULT" | tail -1)
+          BODY=$(echo "$RESULT" | head -1)
+          echo "addStar: HTTP $HTTP body=$BODY"
+
+      - name: try-dispatch
+        continue-on-error: true
+        run: |
+          echo "=== TRY REPO DISPATCH (should fail - no contents:write) ==="
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches" \
+            -d '{"event_type":"perm-test"}')
+          HTTP=$(echo "$RESULT" | tail -1)
+          echo "repo-dispatch: HTTP $HTTP"
+
+      - name: try-create-ref
+        continue-on-error: true
+        run: |
+          echo "=== TRY CREATE REF/TAG (should fail - no contents:write) ==="
+          SHA=$(git rev-parse HEAD)
+          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs" \
+            -d "{\"ref\":\"refs/tags/perm-test-tag\",\"sha\":\"$SHA\"}")
+          HTTP=$(echo "$RESULT" | tail -1)
+          echo "create-ref: HTTP $HTTP"
+
+      - name: summary
+        run: echo "All permission tests completed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
