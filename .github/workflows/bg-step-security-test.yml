@@ -1,0 +1,49 @@
+name: bg-step-security-test
+on: workflow_dispatch
+
+env:
+  REPO_SECRET: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  bg-secret-race:
+    runs-on: ubuntu-latest
+    steps:
+      - name: canary-env
+        run: echo "CANARY=BG-AUTHZ-CANARY-42" >> "$GITHUB_ENV"
+
+      - name: bg-watcher
+        id: watcher
+        background: true
+        run: |
+          echo "BG: started"
+          echo "BG: GITHUB_TOKEN length=${#GITHUB_TOKEN}"
+          echo "BG: CANARY=$CANARY"
+          echo "BG: REPO_SECRET length=${#REPO_SECRET}"
+          # Try to read GITHUB_ENV file for secrets set later
+          echo "BG: GITHUB_ENV=$GITHUB_ENV"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            LATE_CANARY=$(cat "$GITHUB_ENV" 2>/dev/null | grep LATE_SECRET | tail -1)
+            echo "BG_TICK_$i: LATE_ENV_READ=$LATE_CANARY"
+            sleep 2
+          done
+          echo "BG: done"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: set-late-secret
+        run: |
+          echo "FG: Setting late secret AFTER bg started"
+          echo "LATE_SECRET=LATE-BG-RACE-SECRET-99" >> "$GITHUB_ENV"
+          sleep 2
+
+      - name: use-late-secret
+        run: |
+          echo "FG: LATE_SECRET=$LATE_SECRET"
+          echo "FG: sleeping to let bg pick up GITHUB_ENV writes"
+          sleep 10
+
+      - name: cancel-bg
+        cancel: watcher
+
+      - name: final
+        run: echo "FG: all done"
