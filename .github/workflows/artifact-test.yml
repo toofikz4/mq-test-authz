@@ -1,0 +1,22 @@
+name: artifact-authz-test
+on:
+  push:
+    paths:
+      - '.github/workflows/artifact-test.yml'
+
+jobs:
+  upload-secret:
+    runs-on: ubuntu-latest
+    steps:
+      - name: create-secret-file
+        run: |
+          mkdir -p artifact-dir
+          echo "ARTIFACT-SECRET-CANARY-$(date +%s)" > artifact-dir/secret.txt
+          echo "This should NOT be readable by non-collaborators" >> artifact-dir/secret.txt
+      
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-artifact
+          path: artifact-dir/
+          retention-days: 1
