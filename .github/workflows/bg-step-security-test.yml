@@ -1,42 +1,39 @@
-name: bg-secret-race-v2
+name: bg-outlive-test
 on:
-  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/bg-step-security-test.yml'
 
 jobs:
-  secret-race:
+  outlive-test:
     runs-on: ubuntu-latest
-    env:
-      JOB_SECRET: job-level-secret-canary
     steps:
-      - name: bg-env-reader
-        id: reader
+      - name: bg-persist
+        id: persist
         background: true
         run: |
-          echo "BG_START pid=$$"
-          echo "BG GITHUB_ENV=$GITHUB_ENV"
-          echo "BG JOB_SECRET=$JOB_SECRET"
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            ENVDATA=$(cat "$GITHUB_ENV" 2>/dev/null || echo "UNREADABLE")
-            echo "BG_TICK_$i ENVDATA=$ENVDATA LATE=$LATE_VALUE"
-            sleep 2
+          echo "BG_START pid=$$ ppid=$PPID"
+          echo "BG RUNNER_TEMP=$RUNNER_TEMP"
+          echo "BG GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          for i in $(seq 1 60); do
+            if [ -f "$GITHUB_WORKSPACE/fg-secret.txt" ]; then
+              echo "BG_TICK_$i FILE_READ=$(cat $GITHUB_WORKSPACE/fg-secret.txt)"
+            else
+              echo "BG_TICK_$i NO_FILE_YET"
+            fi
+            sleep 1
           done
 
-      - name: write-late
+      - name: write-workspace-secret
         run: |
-          echo "FG1 writing LATE_VALUE"
-          echo "LATE_VALUE=CANARY-LATE-99" >> "$GITHUB_ENV"
-          sleep 3
+          echo "FG1 writing secret to workspace file"
+          echo "WORKSPACE-FILE-CANARY-SECRET-88888" > "$GITHUB_WORKSPACE/fg-secret.txt"
+          sleep 2
 
-      - name: read-late
+      - name: verify-written
         run: |
-          echo "FG2 LATE_VALUE=$LATE_VALUE"
-          sleep 8
+          echo "FG2 file exists: $(cat $GITHUB_WORKSPACE/fg-secret.txt)"
+          sleep 5
 
-      - name: stop
-        cancel: reader
-
-      - name: done
-        run: echo "FG3 done"
+      - name: no-cancel
+        run: echo "FG3 NOT cancelling bg - letting job end with bg still running"
