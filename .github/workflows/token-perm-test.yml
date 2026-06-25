@@ -1,6 +1,5 @@
-name: token-perm-test
+name: token-perm-test-v2
 on:
-  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/token-perm-test.yml'
@@ -11,92 +10,36 @@ permissions:
 jobs:
   test-token-scope:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: token-info
         run: |
-          echo "=== TOKEN INFO ==="
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          echo "=== TOKEN SCOPES ==="
+          curl -s -H "Authorization: token $GH_TOKEN" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq '{permissions}'
           
-          echo "=== RATE LIMIT ==="
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/rate_limit" | jq '.resources.core.limit'
-
-      - name: try-create-issue
-        continue-on-error: true
+      - name: try-writes
         run: |
-          echo "=== TRY CREATE ISSUE (should fail - no issues:write) ==="
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues" \
-            -d '{"title":"perm-test-issue","body":"should not be created"}')
-          HTTP=$(echo "$RESULT" | tail -1)
-          echo "create-issue: HTTP $HTTP"
-      
-      - name: try-create-release
-        continue-on-error: true
-        run: |
-          echo "=== TRY CREATE RELEASE (should fail - no contents:write) ==="
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases" \
-            -d '{"tag_name":"perm-test-v0.0.1","name":"perm test"}')
-          HTTP=$(echo "$RESULT" | tail -1)
-          echo "create-release: HTTP $HTTP"
-
-      - name: try-create-deployment
-        continue-on-error: true
-        run: |
-          echo "=== TRY CREATE DEPLOYMENT (should fail - no deployments:write) ==="
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/deployments" \
-            -d '{"ref":"main","environment":"perm-test"}')
-          HTTP=$(echo "$RESULT" | tail -1)
-          echo "create-deployment: HTTP $HTTP"
-
-      - name: try-graphql-mutation
-        continue-on-error: true
-        run: |
-          echo "=== TRY GRAPHQL addStar (should fail) ==="
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/graphql" \
-            -d '{"query":"mutation { addStar(input:{starrableId:\"R_kgDOTFaglQ\"}) { starrable { id } } }"}')
-          HTTP=$(echo "$RESULT" | tail -1)
-          BODY=$(echo "$RESULT" | head -1)
-          echo "addStar: HTTP $HTTP body=$BODY"
-
-      - name: try-dispatch
-        continue-on-error: true
-        run: |
-          echo "=== TRY REPO DISPATCH (should fail - no contents:write) ==="
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches" \
-            -d '{"event_type":"perm-test"}')
-          HTTP=$(echo "$RESULT" | tail -1)
-          echo "repo-dispatch: HTTP $HTTP"
-
-      - name: try-create-ref
-        continue-on-error: true
-        run: |
-          echo "=== TRY CREATE REF/TAG (should fail - no contents:write) ==="
-          SHA=$(git rev-parse HEAD)
-          RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs" \
-            -d "{\"ref\":\"refs/tags/perm-test-tag\",\"sha\":\"$SHA\"}")
-          HTTP=$(echo "$RESULT" | tail -1)
-          echo "create-ref: HTTP $HTTP"
-
-      - name: summary
-        run: echo "All permission tests completed"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "=== CREATE ISSUE ==="
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/issues" -d '{"title":"perm-test"}')"
+          
+          echo "=== CREATE RELEASE ==="
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/releases" -d '{"tag_name":"perm-v0.1"}')"
+          
+          echo "=== CREATE DEPLOYMENT ==="
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/deployments" -d '{"ref":"main"}')"
+          
+          echo "=== REPO DISPATCH ==="
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches" -d '{"event_type":"test"}')"
+          
+          echo "=== DELETE BRANCH PROTECTION ==="
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/branches/main/protection")"
+          
+          echo "=== CREATE COMMIT STATUS ==="
+          SHA=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/main" | jq -r '.sha')
+          echo "status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d '{"state":"success","context":"perm-test"}')"
+          
+          echo "=== GRAPHQL addStar ==="
+          RESP=$(curl -s -X POST -H "Authorization: bearer $GH_TOKEN" -H "Content-Type: application/json" "https://api.github.com/graphql" -d '{"query":"mutation { addStar(input:{starrableId:\"R_kgDOTFaglQ\"}) { starrable { id } } }"}')
+          echo "addStar: $(echo $RESP | jq -r '.errors[0].type // "SUCCESS"')"
