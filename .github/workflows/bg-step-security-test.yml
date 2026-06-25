@@ -1,29 +1,54 @@
-name: bg-test-minimal
+name: bg-secret-race-test
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/bg-step-security-test.yml'
 
 jobs:
-  test-bg:
+  secret-race:
     runs-on: ubuntu-latest
     steps:
-      - name: normal-step
-        run: echo "normal step"
-      
-      - name: bg-service
-        id: bg1
+      - name: bg-env-reader
+        id: reader
         background: true
         run: |
-          echo "background step running"
-          sleep 10
-          echo "background done"
-      
-      - name: continue
+          echo "BG_START: pid=$$"
+          echo "BG: GITHUB_ENV=$GITHUB_ENV"
+          echo "BG: initial GITHUB_TOKEN len=${#GITHUB_TOKEN}"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if [ -f "$GITHUB_ENV" ]; then
+              ENVCONTENTS=$(cat "$GITHUB_ENV" 2>/dev/null)
+              echo "BG_TICK_$i: GITHUB_ENV contents=[$ENVCONTENTS]"
+            fi
+            echo "BG_TICK_$i: SECRET_VAR=$SECRET_VAR LATE_VALUE=$LATE_VALUE"
+            sleep 2
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SECRET_VAR: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: write-late-secret
         run: |
-          echo "this runs while bg1 is still going"
+          echo "FG1: Writing LATE_VALUE to GITHUB_ENV"
+          echo "LATE_VALUE=LATE-SECRET-CANARY-12345" >> "$GITHUB_ENV"
+          sleep 3
+
+      - name: read-late-secret
+        run: |
+          echo "FG2: LATE_VALUE=$LATE_VALUE"
           sleep 5
-      
-      - name: stop-bg
-        cancel: bg1
+
+      - name: write-second-secret
+        run: |
+          echo "FG3: Writing SECOND_SECRET"
+          echo "SECOND_SECRET=SECOND-CANARY-67890" >> "$GITHUB_ENV"
+          sleep 5
+
+      - name: check-bg-output
+        run: echo "FG4: checking if bg read late secrets"
+
+      - name: cancel-reader
+        cancel: reader
+
+      - name: verify-cancel
+        run: |
+          echo "FG5: bg cancelled, checking if process still exists"
+          ps aux | grep -v grep | grep "sleep" || echo "no lingering sleep processes"
