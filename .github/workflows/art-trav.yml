@@ -1,0 +1,34 @@
+name: artifact-name-traversal
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: create-test-file
+        run: echo "TRAVERSAL_CANARY_$(date +%s)" > canary.txt
+      - name: upload-with-traversal-name
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: "../../../traversal-test"
+          path: canary.txt
+      - name: upload-with-dotdot-name
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: "..%2f..%2ftraversal-encoded"
+          path: canary.txt
+      - name: upload-with-null-byte
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: "normal-name\x00hidden-part"
+          path: canary.txt
+      - name: upload-normal-control
+        uses: actions/upload-artifact@v4
+        with:
+          name: "control-artifact"
+          path: canary.txt
