@@ -1,0 +1,20 @@
+name: art-quote-test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "test" > f.txt
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: 'test%22injected%22name'
+          path: f.txt
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: 'test%3cscript%3ealert(1)%3c/script%3e'
+          path: f.txt
