@@ -1,39 +1,38 @@
-name: bg-outlive-test
+name: bg-step-env-race-test
 on:
-  push:
-    paths:
-      - '.github/workflows/bg-step-security-test.yml'
-
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  outlive-test:
+  bg-race:
     runs-on: ubuntu-latest
     steps:
-      - name: bg-persist
-        id: persist
+      - name: bg-writer
         background: true
         run: |
-          echo "BG_START pid=$$ ppid=$PPID"
-          echo "BG RUNNER_TEMP=$RUNNER_TEMP"
-          echo "BG GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          for i in $(seq 1 60); do
-            if [ -f "$GITHUB_WORKSPACE/fg-secret.txt" ]; then
-              echo "BG_TICK_$i FILE_READ=$(cat $GITHUB_WORKSPACE/fg-secret.txt)"
-            else
-              echo "BG_TICK_$i NO_FILE_YET"
-            fi
+          for i in $(seq 1 5); do
+            echo "BG_SECRET_$i=bg-canary-value-$i" >> $GITHUB_ENV
+            echo "/tmp/bg-injected-path-$i" >> $GITHUB_PATH
             sleep 1
           done
-
-      - name: write-workspace-secret
+          echo "BG_WRITER_DONE=true" >> $GITHUB_ENV
+      - name: fg-reader-immediate
         run: |
-          echo "FG1 writing secret to workspace file"
-          echo "WORKSPACE-FILE-CANARY-SECRET-88888" > "$GITHUB_WORKSPACE/fg-secret.txt"
-          sleep 2
-
-      - name: verify-written
+          echo "FG_IMMEDIATE_CHECK:"
+          echo "  BG_SECRET_1=$BG_SECRET_1"
+          echo "  BG_SECRET_5=$BG_SECRET_5"
+          echo "  BG_WRITER_DONE=$BG_WRITER_DONE"
+          echo "  GITHUB_ENV contents:"
+          cat $GITHUB_ENV 2>/dev/null || echo "  (no GITHUB_ENV)"
+          echo "  GITHUB_PATH contents:"
+          cat $GITHUB_PATH 2>/dev/null || echo "  (no GITHUB_PATH)"
+          echo "  PATH check:"
+          echo "$PATH" | tr ':' '\n' | grep bg-injected | head -5
+      - wait-all:
+      - name: fg-reader-after-wait
         run: |
-          echo "FG2 file exists: $(cat $GITHUB_WORKSPACE/fg-secret.txt)"
-          sleep 5
-
-      - name: no-cancel
-        run: echo "FG3 NOT cancelling bg - letting job end with bg still running"
+          echo "FG_AFTER_WAIT_CHECK:"
+          echo "  BG_SECRET_1=$BG_SECRET_1"
+          echo "  BG_SECRET_5=$BG_SECRET_5"
+          echo "  BG_WRITER_DONE=$BG_WRITER_DONE"
+          echo "  PATH bg-injected count: $(echo $PATH | tr ':' '\n' | grep -c bg-injected)"
