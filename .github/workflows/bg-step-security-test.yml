@@ -1,38 +1,34 @@
-name: bg-step-env-race-test
+name: bg-output-race-test
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  bg-race:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: bg-writer
+      - name: bg-output-writer
+        id: bgwriter
         background: true
         run: |
-          for i in $(seq 1 5); do
-            echo "BG_SECRET_$i=bg-canary-value-$i" >> $GITHUB_ENV
-            echo "/tmp/bg-injected-path-$i" >> $GITHUB_PATH
-            sleep 1
-          done
-          echo "BG_WRITER_DONE=true" >> $GITHUB_ENV
+          echo "secret_data=BG-OUTPUT-CANARY-$(date +%s)" >> $GITHUB_OUTPUT
+          echo "status=writing" >> $GITHUB_OUTPUT
+          sleep 3
+          echo "final_value=BG-FINAL-VALUE" >> $GITHUB_OUTPUT
+          echo "status=done" >> $GITHUB_OUTPUT
       - name: fg-reader-immediate
         run: |
-          echo "FG_IMMEDIATE_CHECK:"
-          echo "  BG_SECRET_1=$BG_SECRET_1"
-          echo "  BG_SECRET_5=$BG_SECRET_5"
-          echo "  BG_WRITER_DONE=$BG_WRITER_DONE"
-          echo "  GITHUB_ENV contents:"
-          cat $GITHUB_ENV 2>/dev/null || echo "  (no GITHUB_ENV)"
-          echo "  GITHUB_PATH contents:"
-          cat $GITHUB_PATH 2>/dev/null || echo "  (no GITHUB_PATH)"
-          echo "  PATH check:"
-          echo "$PATH" | tr ':' '\n' | grep bg-injected | head -5
+          echo "IMMEDIATE_READ:"
+          echo "  bgwriter.secret_data=${{ steps.bgwriter.outputs.secret_data }}"
+          echo "  bgwriter.status=${{ steps.bgwriter.outputs.status }}"
+          echo "  bgwriter.final_value=${{ steps.bgwriter.outputs.final_value }}"
+          echo "  GITHUB_OUTPUT_FILE=$GITHUB_OUTPUT"
+          echo "  OUTPUT_FILE_CONTENTS:"
+          cat $GITHUB_OUTPUT 2>/dev/null || echo "  (cannot read)"
       - wait-all:
       - name: fg-reader-after-wait
         run: |
-          echo "FG_AFTER_WAIT_CHECK:"
-          echo "  BG_SECRET_1=$BG_SECRET_1"
-          echo "  BG_SECRET_5=$BG_SECRET_5"
-          echo "  BG_WRITER_DONE=$BG_WRITER_DONE"
-          echo "  PATH bg-injected count: $(echo $PATH | tr ':' '\n' | grep -c bg-injected)"
+          echo "AFTER_WAIT_READ:"
+          echo "  bgwriter.secret_data=${{ steps.bgwriter.outputs.secret_data }}"
+          echo "  bgwriter.status=${{ steps.bgwriter.outputs.status }}"
+          echo "  bgwriter.final_value=${{ steps.bgwriter.outputs.final_value }}"
