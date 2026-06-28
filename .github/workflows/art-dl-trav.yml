@@ -1,0 +1,35 @@
+name: artifact-download-traversal-test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  download-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: download-traversal-artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: "..%2f..%2ftraversal-encoded"
+          path: ./download-target/
+          run-id: 28307382259
+          github-token: ${{ github.token }}
+      - name: check-filesystem
+        run: |
+          echo "=== DOWNLOAD TARGET DIRECTORY ==="
+          ls -laR ./download-target/ 2>/dev/null || echo "download-target not found"
+          echo ""
+          echo "=== CHECK FOR TRAVERSAL (parent directories) ==="
+          ls -la ../ 2>/dev/null | head -10
+          echo ""
+          echo "=== CHECK WORKING DIRECTORY ==="
+          pwd
+          ls -la ./ | head -20
+          echo ""
+          echo "=== CHECK FOR FILES NAMED WITH %2f ==="
+          find . -maxdepth 3 -name '*%2f*' -o -name '*traversal*' 2>/dev/null
+          echo ""
+          echo "=== CHECK IF ANY FILES WERE WRITTEN OUTSIDE download-target ==="
+          find . -maxdepth 3 -name 'canary.txt' 2>/dev/null
