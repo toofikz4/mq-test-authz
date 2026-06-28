@@ -1,0 +1,57 @@
+name: runner-env-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: env-and-network
+        run: |
+          echo "=== ENVIRONMENT VARIABLES ==="
+          env | sort | grep -iE 'GITHUB|ACTIONS|RUNNER|TOKEN|SECRET|KEY|URL|HOST|NODE|CI' | head -40
+          
+          echo ""
+          echo "=== NETWORK: internal service discovery ==="
+          # Check if any internal GitHub services are reachable
+          for host in github.com api.github.com alive.github.com; do
+            echo -n "$host: "
+            curl -s -o /dev/null -w "%{http_code} %{time_total}s" "https://$host" --max-time 3 2>/dev/null || echo "unreachable"
+          done
+          echo ""
+          
+          # Check for IMDS (cloud metadata)
+          echo -n "IMDS (169.254.169.254): "
+          curl -s -o /dev/null -w "%{http_code}" "http://169.254.169.254/latest/meta-data/" --max-time 3 2>/dev/null || echo "blocked"
+          echo ""
+          
+          echo -n "Azure IMDS: "
+          curl -s -o /dev/null -w "%{http_code}" "http://169.254.169.254/metadata/instance" -H "Metadata: true" --max-time 3 2>/dev/null || echo "blocked"
+          echo ""
+          
+          echo ""
+          echo "=== GITHUB_TOKEN CAPABILITIES ==="
+          # Check what the GITHUB_TOKEN can do
+          echo -n "REST API /user: "
+          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/user" 
+          echo ""
+          echo -n "REST API /repos/toofikz4/disc-secret (cross-repo): "
+          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/toofikz4/disc-secret"
+          echo ""
+          echo -n "REST API /orgs/tooforg: "
+          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/orgs/tooforg"
+          echo ""
+          
+          echo ""
+          echo "=== TOKEN SCOPES ==="
+          curl -sI "https://api.github.com/" -H "Authorization: token $GITHUB_TOKEN" | grep -iE "x-oauth|x-ratelimit|x-accepted"
+          
+          echo ""
+          echo "=== RUNNER IMAGE ==="
+          echo "OS: $(uname -a | head -c 80)"
+          echo "Docker: $(docker --version 2>/dev/null || echo 'not available')"
+          echo "Node: $(node --version 2>/dev/null)"
+          echo "Python: $(python3 --version 2>/dev/null)"
