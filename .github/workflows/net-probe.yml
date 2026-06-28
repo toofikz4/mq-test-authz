@@ -1,0 +1,39 @@
+name: network-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  net:
+    runs-on: ubuntu-latest
+    steps:
+      - name: probe-internal
+        run: |
+          echo "=== Azure wireserver (168.63.129.16) ==="
+          curl -s -o /dev/null -w "HTTP:%{http_code} %{time_total}s" "http://168.63.129.16/?comp=versions" --max-time 3 2>/dev/null || echo "unreachable"
+          echo ""
+          curl -s -o /dev/null -w "HTTP:%{http_code}" "http://168.63.129.16/machine/?comp=goalstate" --max-time 3 2>/dev/null || echo "unreachable"
+          echo ""
+          
+          echo ""
+          echo "=== Internal DNS resolution ==="
+          for h in runner actions-results runner-service github-internal internal.github.com; do
+            echo -n "$h: "
+            dig +short "$h" 2>/dev/null || echo "unresolvable"
+          done
+          
+          echo ""
+          echo "=== Subnet scan (quick TCP connect on common ports) ==="
+          for port in 80 443 8080 8443 9090 6379 5432 3306; do
+            echo -n "10.1.0.1:$port "
+            timeout 1 bash -c "echo > /dev/tcp/10.1.0.1/$port" 2>/dev/null && echo "OPEN" || echo "closed"
+          done
+          
+          echo ""
+          echo "=== GCE/AWS metadata alternatives ==="
+          echo -n "GCE metadata: "
+          curl -s -o /dev/null -w "%{http_code}" -H "Metadata-Flavor: Google" "http://169.254.169.254/computeMetadata/v1/" --max-time 2 2>/dev/null || echo "N/A"
+          echo ""
+          echo -n "AWS IMDSv2 token: "
+          curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" "http://169.254.169.254/latest/api/token" --max-time 2 2>/dev/null || echo "N/A"
+          echo ""
