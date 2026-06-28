@@ -1,0 +1,34 @@
+name: cache-internal-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: save-own-cache
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/cache-probe-canary
+          key: internal-probe-${{ github.sha }}
+        env:
+          ACTIONS_CACHE_SERVICE_V2: true
+      - name: probe-cache-internals
+        run: |
+          echo "=== CACHE ENV VARS AFTER SAVE ==="
+          env | sort | grep -iE 'CACHE|ACTIONS_RESULTS|ACTIONS_RUNTIME|ACTIONS_ID' | head -10
+          
+          echo ""
+          echo "=== Try cache lookup via REST API for OWN repo ==="
+          curl -s "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/caches" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" | jq '{total_count}' 2>/dev/null
+          
+          echo ""
+          echo "=== Try cache lookup via REST API for CROSS repo ==="
+          curl -s -w "\nHTTP:%{http_code}" \
+            "https://api.github.com/repos/toofikz4/gha-diag-1782340688/actions/caches" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" | tail -3
