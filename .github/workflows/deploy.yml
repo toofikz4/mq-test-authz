@@ -1,0 +1,19 @@
+name: deploy-authz-test
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: prove-secret-access
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          echo "DEPLOY_STEP_ACTOR=$GITHUB_ACTOR"
+          echo "DEPLOY_TOKEN_LEN=${#DEPLOY_TOKEN}"
+          if [ -n "$DEPLOY_TOKEN" ]; then
+            echo "SECRET_ACCESS=YES"
+          else
+            echo "SECRET_ACCESS=NO"
+          fi
